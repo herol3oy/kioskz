@@ -8,10 +8,10 @@ app.get('/', (c) => {
 
 app.get('/urls', (c) => {
   return c.json([
-    { host: 'huffpost.com', lang: 'en' },
-    { host: 'sapo.pt', lang: 'pt' },
-    { host: 'spiegel.de', lang: 'de' },
-    { host: 'radiofarda.com', lang: 'fa' },
+    { url: 'huffpost.com', lang: 'en' },
+    { url: 'sapo.pt', lang: 'pt' },
+    { url: 'spiegel.de', lang: 'de' },
+    { url: 'radiofarda.com', lang: 'fa' },
   ])
 })
 
