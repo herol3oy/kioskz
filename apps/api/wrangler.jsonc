@@ -2,7 +2,7 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "api",
   "main": "src/index.ts",
-  "compatibility_date": "2026-02-07"
+  "compatibility_date": "2026-02-07",
   // "compatibility_flags": [
   //   "nodejs_compat"
   // ],
@@ -21,12 +21,14 @@
   //     "bucket_name": "my-bucket"
   //   }
   // ],
-  // "d1_databases": [
-  //   {
-  //     "binding": "MY_DB",
-  //     "database_name": "my-database",
-  //     "database_id": ""
-  //   }
+  "d1_databases": [
+    {
+      "binding": "kiosk24",
+      "database_name": "kiosk24",
+      "database_id": "fe116b50-9091-4f37-93f5-f2fe03d73a90",
+      "migrations_dir": "drizzle"
+    }
+  ],
   // ],
   // "ai": {
   //   "binding": "AI"
