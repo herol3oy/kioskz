@@ -2,6 +2,9 @@ import { chromium, BrowserContext, Page } from 'playwright';
 import { S3Client } from '@aws-sdk/client-s3';
 import { Upload } from '@aws-sdk/lib-storage';
 import dotenv from 'dotenv';
+import 'dotenv/config';
+import { DeviceType, JobStatus, UrlEntry } from '../../../libs/shared/src/types';
+import { getJsCleanup } from './getJsCleanup';
 
 dotenv.config({ quiet: true });
 
@@ -10,16 +13,10 @@ const URLS_ENDPOINT =
     process.env.NODE_ENV === 'production'
         ? 'https://kioskz-api.potato0.workers.dev/urls'
         : 'http://localhost:8787/urls';
-
-const CF_ACCOUNT_ID = process.env.D1_ACCOUNT_ID;
-const CF_DATABASE_ID = process.env.D1_DATABASE_ID;
-const CF_API_TOKEN = process.env.D1_API_TOKEN;
-
-if (!CF_ACCOUNT_ID || !CF_DATABASE_ID || !CF_API_TOKEN) {
-    throw new Error('Missing Cloudflare D1 credentials (ACCOUNT_ID, DATABASE_ID, or API_TOKEN)');
-}
-
-const D1_API_ENDPOINT = `https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/d1/database/${CF_DATABASE_ID}/query`;
+const SCREENSHOTS_ENDPOINT =
+    process.env.NODE_ENV === 'production'
+        ? 'https://kioskz-api.potato0.workers.dev/screenshots'
+        : 'http://localhost:8787/screenshots';
 
 const BROWSER_ARGS = [
     "--headless",
@@ -67,39 +64,13 @@ const s3Client = new S3Client({
 });
 
 
-interface UrlEntry {
-    url: string;
-    lang: string;
-}
-
-function getJsCleanup(): string {
-    return `
-    document.body.classList.remove("didomi-popup-open")
-
-    const advertClasses = [
-        "-top-bar-advert-logged-mobile", 
-        "-top-bar-advert-unlogged-mobile", 
-        "-top-bar-advert-logged-desktop", 
-        "-top-bar-advert-unlogged-desktop"
-    ];
-
-    document.querySelectorAll('.' + advertClasses.join(', .')).forEach(el => {
-        el.classList.remove(...advertClasses);
-    });
-
-    document.querySelectorAll('nav').forEach(e => 
-        e.classList.remove('navigation')
-    )
-
-    document.querySelector('.ue-l-cg.ue-l-cg--no-divider')?.remove()
-
-    document.querySelectorAll(\`
-        .ad-slot-module__container__VEdre,
-        .container--ads,
-        .cmpwrapper
-       
-    \`).forEach(e => e.remove());
-    `;
+function getUrlKey(rawUrl: string): string {
+    try {
+        const parsed = new URL(rawUrl);
+        return parsed.hostname;
+    } catch {
+        return rawUrl.replace(/^https?:\/\//, '').split('/')[0];
+    }
 }
 
 async function fetchUrls(): Promise<UrlEntry[]> {
@@ -116,63 +87,34 @@ async function fetchUrls(): Promise<UrlEntry[]> {
 }
 
 
-async function executeD1Query(sql: string, params: any[]) {
-    const response = await fetch(D1_API_ENDPOINT, {
-        method: 'POST',
-        headers: {
-            'Authorization': `Bearer ${CF_API_TOKEN}`,
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-            sql: sql,
-            params: params
-        })
-    });
-
-    if (!response.ok) {
-        const text = await response.text();
-        throw new Error(`D1 API Error: ${response.status} - ${text}`);
-    }
-
-    const result = await response.json();
-    // @ts-ignore - Check for D1 specific success flag
-    if (!result.success) {
-        // @ts-ignore
-        throw new Error(`D1 Query Failed: ${JSON.stringify(result.errors)}`);
-    }
-    return result;
-}
-
 async function storeScreenshotJob(
     url: string,
     language: string,
     r2Key: string,
-    status: 'completed' | 'failed',
+    status: JobStatus,
     createdAt: string,
-    device: string
+    device: DeviceType
 ) {
     try {
-        const id = crypto.randomUUID();
+        const response = await fetch(SCREENSHOTS_ENDPOINT, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                url,
+                language,
+                device,
+                job_status: status,
+                r2_key: r2Key,
+                created_at: createdAt,
+            })
+        });
 
-        const sql = `
-            INSERT INTO screenshots (id, url, language, device, job_status, r2_key, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        `;
-
-        const params = [
-            id,
-            url,
-            language,
-            device,
-            status,
-            r2Key,
-            createdAt
-        ];
-
-        await executeD1Query(sql, params);
-
+        if (!response.ok) {
+            const text = await response.text();
+            throw new Error(`Screenshot POST failed: ${response.status} - ${text}`);
+        }
     } catch (err) {
-        console.error(`DB Insert exception for ${url} (${device}):`, err);
+        console.error(`Screenshot POST exception for ${url} (${device}):`, err);
     }
 }
 
@@ -181,12 +123,12 @@ async function processSingleUrl(
     urlData: UrlEntry,
     timestampIso: string
 ) {
-    const { url, lang: language } = urlData;
-    const targetUrl = `https://${url}`;
+    const { url, language } = urlData;
     const capturedAt = new Date().toISOString();
+    const urlKey = getUrlKey(url);
 
     for (const [deviceName, context] of Object.entries(contextsByDevice)) {
-        const objectKey = `${url}/${deviceName}/${timestampIso}.jpg`;
+        const objectKey = `${urlKey}/${deviceName}/${timestampIso}.jpg`;
         let page: Page | null = null;
 
         try {
@@ -194,7 +136,7 @@ async function processSingleUrl(
 
             page = await context.newPage();
 
-            await page.goto(targetUrl, { timeout: 45000, waitUntil: 'domcontentloaded' });
+            await page.goto(url, { timeout: 45000, waitUntil: 'domcontentloaded' });
             await page.waitForTimeout(2500);
 
             await page.evaluate(getJsCleanup());
@@ -222,9 +164,9 @@ async function processSingleUrl(
                 url,
                 language,
                 objectKey,
-                'completed',
+                'ok',
                 capturedAt,
-                deviceName
+                deviceName as DeviceType
             );
 
         } catch (error) {
@@ -236,7 +178,7 @@ async function processSingleUrl(
                 objectKey,
                 'failed',
                 capturedAt,
-                deviceName
+                deviceName as DeviceType
             );
         } finally {
             if (page) {
