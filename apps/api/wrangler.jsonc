@@ -15,15 +15,16 @@
   //     "id": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
   //   }
   // ],
-  // "r2_buckets": [
-  //   {
-  //     "binding": "MY_BUCKET",
-  //     "bucket_name": "my-bucket"
-  //   }
-  // ],
+  "r2_buckets": [
+    {
+      "binding": "R2_BUCKET",
+      "bucket_name": "kiosk24",
+      "preview_bucket_name": "kiosk24preview"
+    }
+  ],
   "d1_databases": [
     {
-      "binding": "kiosk24",
+      "binding": "D1",
       "database_name": "kiosk24",
       "database_id": "fe116b50-9091-4f37-93f5-f2fe03d73a90",
       "migrations_dir": "drizzle"
