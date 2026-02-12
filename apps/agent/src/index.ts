@@ -1,22 +1,18 @@
 import { chromium, BrowserContext, Page } from 'playwright';
-import { S3Client } from '@aws-sdk/client-s3';
-import { Upload } from '@aws-sdk/lib-storage';
 import dotenv from 'dotenv';
-import 'dotenv/config';
-import { DeviceType, JobStatus, UrlEntry } from '../../../libs/shared/src/types';
+import { UrlEntry } from '../../../libs/shared/src/types';
 import { getJsCleanup } from './getJsCleanup';
 
 dotenv.config({ quiet: true });
 
 const JPEG_QUALITY = 60;
-const URLS_ENDPOINT =
-    process.env.NODE_ENV === 'production'
-        ? 'https://kioskz-api.potato0.workers.dev/urls'
-        : 'http://localhost:8787/urls';
-const SCREENSHOTS_ENDPOINT =
-    process.env.NODE_ENV === 'production'
-        ? 'https://kioskz-api.potato0.workers.dev/screenshots'
-        : 'http://localhost:8787/screenshots';
+const API_BASE_URL = process.env.API_BASE_URL;
+
+if (!API_BASE_URL) {
+  throw new Error('API_BASE_URL is missing!');
+}
+const URLS_ENDPOINT = `${API_BASE_URL}/urls`;
+const UPLOAD_ENDPOINT = `${API_BASE_URL}/upload_to_r2_bucket`;
 
 const BROWSER_ARGS = [
     "--headless",
@@ -46,23 +42,6 @@ const VIEWPORTS: Record<string, DeviceConfig> = {
     },
 };
 
-const R2_ENDPOINT_URL = process.env.R2_ENDPOINT_URL;
-const R2_ACCESS_KEY_ID = process.env.R2_ACCESS_KEY_ID;
-const R2_SECRET_ACCESS_KEY = process.env.R2_SECRET_ACCESS_KEY;
-const R2_BUCKET = process.env.R2_BUCKET;
-if (!R2_ENDPOINT_URL || !R2_ACCESS_KEY_ID || !R2_SECRET_ACCESS_KEY || !R2_BUCKET) {
-    throw new Error('Missing R2 environment variables');
-}
-
-const s3Client = new S3Client({
-    region: 'auto',
-    endpoint: R2_ENDPOINT_URL,
-    credentials: {
-        accessKeyId: R2_ACCESS_KEY_ID,
-        secretAccessKey: R2_SECRET_ACCESS_KEY,
-    },
-});
-
 
 function getUrlKey(rawUrl: string): string {
     try {
@@ -86,38 +65,6 @@ async function fetchUrls(): Promise<UrlEntry[]> {
     }
 }
 
-
-async function storeScreenshotJob(
-    url: string,
-    language: string,
-    r2Key: string,
-    status: JobStatus,
-    createdAt: string,
-    device: DeviceType
-) {
-    try {
-        const response = await fetch(SCREENSHOTS_ENDPOINT, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                url,
-                language,
-                device,
-                job_status: status,
-                r2_key: r2Key,
-                created_at: createdAt,
-            })
-        });
-
-        if (!response.ok) {
-            const text = await response.text();
-            throw new Error(`Screenshot POST failed: ${response.status} - ${text}`);
-        }
-    } catch (err) {
-        console.error(`Screenshot POST exception for ${url} (${device}):`, err);
-    }
-}
-
 async function processSingleUrl(
     contextsByDevice: Record<string, BrowserContext>,
     urlData: UrlEntry,
@@ -135,51 +82,43 @@ async function processSingleUrl(
             console.log(`[${new Date().toISOString()}] Capturing ${url} [${language}] [${deviceName}]`);
 
             page = await context.newPage();
-
             await page.goto(url, { timeout: 45000, waitUntil: 'domcontentloaded' });
             await page.waitForTimeout(2500);
-
             await page.evaluate(getJsCleanup());
-
-            console.log(`[${new Date().toISOString()}] Uploading ${url} [${deviceName}] to R2`);
 
             const buffer = await page.screenshot({
                 type: 'jpeg',
                 quality: JPEG_QUALITY
             });
 
-            const upload = new Upload({
-                client: s3Client,
-                params: {
-                    Bucket: R2_BUCKET,
-                    Key: objectKey,
-                    Body: buffer,
-                    ContentType: 'image/jpeg',
-                },
+            console.log(`[${new Date().toISOString()}] Sending ${url} [${deviceName}] to API`);
+
+            const formData = new FormData();
+
+            const fileBlob = new Blob([new Uint8Array(buffer)], { type: 'image/jpeg' });
+
+            formData.append('image', fileBlob, 'screenshot.jpg');
+            formData.append('url', url);
+            formData.append('language', language);
+            formData.append('objectKey', objectKey);
+            formData.append('deviceName', deviceName);
+            formData.append('capturedAt', capturedAt);
+
+            const response = await fetch(UPLOAD_ENDPOINT, {
+                method: 'POST',
+                body: formData
             });
 
-            await upload.done();
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(`API Upload failed: ${response.status} - ${errorText}`);
+            }
 
-            await storeScreenshotJob(
-                url,
-                language,
-                objectKey,
-                'ok',
-                capturedAt,
-                deviceName as DeviceType
-            );
+            console.log(`[${new Date().toISOString()}] Upload successful for ${objectKey}`);
 
         } catch (error) {
             console.error(`Error for ${url} [${deviceName}]:`, error);
 
-            await storeScreenshotJob(
-                url,
-                language,
-                objectKey,
-                'failed',
-                capturedAt,
-                deviceName as DeviceType
-            );
         } finally {
             if (page) {
                 await page.close();
