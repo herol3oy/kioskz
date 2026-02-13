@@ -1,0 +1,12 @@
+services:
+  agent:
+    image: ghcr.io/herol3oy/kiosk-agent:latest
+    build:
+      context: .
+      dockerfile: apps/agent/Dockerfile
+    container_name: kiosk24-agent
+    restart: "no"
+    env_file:
+      - apps/agent/.env
+    environment:
+      - NODE_ENV=production
