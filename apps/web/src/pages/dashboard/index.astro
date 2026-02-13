@@ -1,0 +1,49 @@
+<main>
+  <h1>Dashboard</h1>
+  <h2>Create new URL and language</h2>
+
+  <form id="url-form">
+    <input type="text" name="url" placeholder="URL" required />
+    <input type="text" name="language" placeholder="Language (en, fr)" required />
+    <button type="submit">Create</button>
+  </form>
+
+  <h2>List of all the URLs:</h2>
+  <pre id="output"></pre>
+</main>
+
+<script type="module">
+  const form = document.getElementById('url-form')
+  const output = document.getElementById('output')
+
+  async function loadUrls() {
+    const res = await fetch('/api/urls')
+    output.textContent = JSON.stringify(await res.json(), null, 2)
+  }
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault() 
+
+    try {
+      const body = Object.fromEntries(new FormData(form))
+
+      const res = await fetch('/api/urls', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+
+      if (!res.ok) {
+        const data = await res.json()
+        throw new Error(data.error || 'Failed to create')
+      }
+
+      form.reset() 
+      loadUrls()
+    } catch (err) {
+      alert(err.message || 'Network error')
+    }
+  })
+
+  loadUrls()
+</script>
