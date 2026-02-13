@@ -1,13 +1,23 @@
 import { Hono } from 'hono'
 import { drizzle } from 'drizzle-orm/d1'
 import { screenshotsTable, urlsTable } from './db/schema'
+import { bearerAuth } from 'hono/bearer-auth'
 
 export interface Env {
+  API_KEY: string;
   D1: D1Database;
   R2_BUCKET: R2Bucket;
 }
 
 const app = new Hono<{ Bindings: Env }>()
+
+app.use('*', async (c, next) => {
+  if (c.req.method !== 'GET') {
+    const auth = bearerAuth({ token: c.env.API_KEY })
+    return auth(c, next)
+  }
+  return next()
+})
 
 app.get('/', (c) => {
   return c.text('Hello Hono!')

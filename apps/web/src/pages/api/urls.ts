@@ -1,28 +1,15 @@
 import type { APIRoute } from 'astro'
 
-const API_BASE = 'http://localhost:8787/urls'
-
-export const GET: APIRoute = async () => {
+export const POST: APIRoute = async ({ request, locals }) => {
   try {
-    const res = await fetch(API_BASE)
+    const env = locals.runtime.env;
     
-    return new Response(await res.text(), {
-      status: res.status,
-      headers: { 'Content-Type': 'application/json' },
-    })
-  } catch {
-    return new Response(JSON.stringify({ error: 'Failed to fetch URLs' }), { 
-      status: 500,
-      headers: { 'Content-Type': 'application/json' }
-    })
-  }
-}
-
-export const POST: APIRoute = async ({ request }) => {
-  try {
-    const res = await fetch(API_BASE, {
+    const res = await env.API_WORKER.fetch('http://internal/urls', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${env.API_KEY}`
+      },
       body: await request.text(),
     })
 

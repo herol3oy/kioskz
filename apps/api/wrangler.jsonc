@@ -3,6 +3,12 @@
   "name": "api",
   "main": "src/index.ts",
   "compatibility_date": "2026-02-07",
+  "routes": [
+    {
+      "pattern": "api.kiosk24.site",
+      "custom_domain": true
+    }
+  ],
   // "compatibility_flags": [
   //   "nodejs_compat"
   // ],
