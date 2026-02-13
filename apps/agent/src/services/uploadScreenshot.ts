@@ -1,7 +1,7 @@
 import { ENV } from '../config/env';
 
 export async function uploadScreenshot(
-    buffer: Buffer, 
+    buffer: Buffer,
     metadata: { url: string; language: string; objectKey: string; deviceName: string; capturedAt: string }
 ) {
     const formData = new FormData();
@@ -16,6 +16,9 @@ export async function uploadScreenshot(
 
     const response = await fetch(ENV.UPLOAD_ENDPOINT, {
         method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${ENV.API_KEY}`
+        },
         body: formData
     });
 
