@@ -1,7 +1,75 @@
----
----
+<main style="padding: 2rem;">
+  <h1 style="text-align:center; margin-bottom: 2rem;">Kioskz</h1>
 
-<main style="display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh;">
-  <h1>Kioskz</h1>
-  <img src="http://localhost:8787/index.hu/desktop/2026-02-12T09-13-25Z.jpg" alt="Latest Screenshot" style="max-width: 100%; height: auto; box-shadow: 0 2px 16px rgba(0,0,0,0.15); border-radius: 8px; margin-top: 2rem;" />
+  <div
+    id="grid"
+    style="
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 1.5rem;
+    "
+  >
+  </div>
 </main>
+
+<script type="module">
+  const grid = document.getElementById("grid");
+
+  async function loadScreenshots() {
+    try {
+      const res = await fetch("/api/screenshots");
+
+      if (!res.ok) {
+        throw new Error("Failed to fetch screenshots");
+      }
+
+      const screenshots = await res.json();
+
+      // newest first
+      screenshots.sort(
+        (a, b) =>
+          new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+      );
+
+      grid.innerHTML = "";
+
+      for (const shot of screenshots) {
+        const card = document.createElement("div");
+        card.style.display = "flex";
+        card.style.flexDirection = "column";
+
+        const img = document.createElement("img");
+        img.src = `https://cdn.kiosk24.site/${shot.r2_key}`;
+        img.alt = shot.url;
+        img.style.width = "100%";
+        img.style.borderRadius = "8px";
+        img.style.boxShadow = "0 2px 12px rgba(0,0,0,0.15)";
+
+        const meta = document.createElement("div");
+        meta.style.marginTop = "0.5rem";
+        meta.style.fontSize = "0.85rem";
+
+        const url = document.createElement("div");
+        url.textContent = shot.url;
+        url.style.fontWeight = "500";
+        url.style.wordBreak = "break-all";
+
+        const date = document.createElement("div");
+        date.textContent = new Date(shot.created_at).toLocaleString();
+        date.style.color = "#666";
+
+        meta.appendChild(url);
+        meta.appendChild(date);
+
+        card.appendChild(img);
+        card.appendChild(meta);
+
+        grid.appendChild(card);
+      }
+    } catch (err) {
+      alert(err.message || "Network error");
+    }
+  }
+
+  loadScreenshots();
+</script>
