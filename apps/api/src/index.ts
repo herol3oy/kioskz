@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { drizzle } from 'drizzle-orm/d1'
 import { screenshotsTable, urlsTable } from './db/schema'
 import { bearerAuth } from 'hono/bearer-auth'
+import { eq } from 'drizzle-orm';
 
 export interface Env {
   API_KEY: string;
@@ -51,8 +52,21 @@ app.post('/urls', async (c) => {
   return c.json({ id, url: body.url, language: body.language }, 201)
 })
 
+app.delete('/urls/:id', async (c) => {
+  const db = drizzle(c.env.D1)
+  const id = c.req.param('id')
 
+  const result = await db
+    .delete(urlsTable)
+    .where(eq(urlsTable.id, id))
+    .run()
 
+  if (result.meta.changes === 0) {
+    return c.json({ error: 'URL not found' }, 404)
+  }
+
+  return c.json({ success: true, deletedId: id }, 200)
+})
 
 app.get('/screenshots', async (c) => {
   const db = drizzle(c.env.D1)
